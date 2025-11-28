@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # Service PostgreSQL
+  db:
+    image: postgres:15-alpine
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: student_user
+      POSTGRES_PASSWORD: student_pass
+      POSTGRES_DB: student_grades_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U student_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Service Redis
+  redis:
+    image: redis:7-alpine
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Service Flask Web
+  web:
+    build: .
+    container_name: flask_web
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://student_user:student_pass@db:5432/student_grades_db
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=votre_cle_secrete_super_secure_ici
+      - CACHE_TTL=300
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app_network
+    volumes:
+      - .:/app
+
+volumes:
+  postgres_data:
+
+networks:
+  app_network:
+    driver: bridge

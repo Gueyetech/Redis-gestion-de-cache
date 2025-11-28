@@ -1,0 +1,411 @@
+{% extends "base.html" %}
+
+{% block title %}Liste des Étudiants{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Boutons d'actions */
+    .btn-group .btn {
+        padding: 0.5rem 0.75rem;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-group .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    .btn-group .btn i {
+        font-size: 1rem;
+    }
+    
+    /* Animation des lignes du tableau */
+    .student-row {
+        transition: all 0.3s ease;
+    }
+    
+    .student-row:hover {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08));
+        transform: scale(1.01);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* Input de recherche */
+    .input-group .form-control:focus {
+        box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        border-color: var(--primary);
+    }
+    
+    .input-group-text {
+        border: 2px solid #e2e8f0;
+    }
+    
+    /* Badges de notes */
+    .badge {
+        font-size: 0.9rem;
+        padding: 0.5rem 1rem;
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">
+                    <i class="bi bi-people-fill"></i> Gestion des Étudiants
+                </h4>
+                <button class="btn btn-success" id="btnAddStudent">
+                    <i class="bi bi-plus-circle-fill"></i> Ajouter un étudiant
+                </button>
+            </div>
+            <div class="card-body">
+                <!-- Barre de recherche et filtres -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white">
+                                <i class="bi bi-search"></i>
+                            </span>
+                            <input type="text" class="form-control" id="searchInput" 
+                                   placeholder="Rechercher par nom...">
+                            <button class="btn btn-outline-secondary" type="button" id="btnClearSearch" title="Effacer">
+                                <i class="bi bi-x-circle-fill"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <button class="btn btn-warning" id="btnClearCache">
+                            <i class="bi bi-trash3-fill"></i> Vider le cache
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Indicateur de chargement -->
+                <div id="loadingIndicator" class="text-center my-4" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Chargement...</span>
+                    </div>
+                </div>
+                
+                <!-- Informations de performance -->
+                <div id="performanceInfo" class="alert alert-info mb-3" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>Source:</strong> <span id="dataSource"></span>
+                        </div>
+                        <div>
+                            <strong>Temps d'accès:</strong> <span id="accessTime"></span> ms
+                        </div>
+                        <div>
+                            <strong>Nombre de résultats:</strong> <span id="resultCount"></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tableau des étudiants -->
+                <div class="table-responsive">
+                    <table class="table table-hover" id="studentsTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nom</th>
+                                <th>Note</th>
+                                <th>Date de création</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="studentsTableBody">
+                            <!-- Les données seront chargées dynamiquement -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="noResults" class="alert alert-warning text-center" style="display: none;">
+                    <i class="bi bi-info-circle-fill"></i> Aucun étudiant trouvé.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal pour ajouter/modifier un étudiant -->
+<div class="modal fade" id="studentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="studentModalTitle">Ajouter un étudiant</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="studentForm">
+                    <input type="hidden" id="studentId">
+                    <div class="mb-3">
+                        <label for="studentName" class="form-label">Nom complet</label>
+                        <input type="text" class="form-control" id="studentName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="studentGrade" class="form-label">Note (0-20)</label>
+                        <input type="number" class="form-control" id="studentGrade" 
+                               min="0" max="20" step="0.5" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" id="btnSaveStudent">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let studentModal;
+    let searchTimeout;
+    
+    // Initialisation au chargement de la page
+    $(document).ready(function() {
+        studentModal = new bootstrap.Modal(document.getElementById('studentModal'));
+        
+        // Initialiser les tooltips Bootstrap
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+        
+        loadStudents();
+        
+        // Recherche avec debounce
+        $('#searchInput').on('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(function() {
+                loadStudents($('#searchInput').val());
+            }, 500);
+        });
+        
+        // Bouton effacer recherche
+        $('#btnClearSearch').click(function() {
+            $('#searchInput').val('');
+            loadStudents();
+        });
+        
+        // Bouton ajouter étudiant
+        $('#btnAddStudent').click(function() {
+            openAddModal();
+        });
+        
+        // Bouton enregistrer
+        $('#btnSaveStudent').click(function() {
+            saveStudent();
+        });
+        
+        // Bouton vider cache
+        $('#btnClearCache').click(function() {
+            clearCache();
+        });
+    });
+    
+    // Charger les étudiants
+    function loadStudents(filterName = '') {
+        $('#loadingIndicator').show();
+        $('#studentsTableBody').empty();
+        $('#performanceInfo').hide();
+        $('#noResults').hide();
+        
+        let url = '/api/students';
+        if (filterName) {
+            url += '?name=' + encodeURIComponent(filterName);
+        }
+        
+        $.get(url)
+            .done(function(response) {
+                $('#loadingIndicator').hide();
+                
+                if (response.success) {
+                    // Afficher les informations de performance
+                    $('#performanceInfo').show();
+                    $('#dataSource').html(response.from_cache 
+                        ? '<span class="badge badge-cache">Cache Redis</span>'
+                        : '<span class="badge badge-db">Base de données</span>');
+                    $('#accessTime').text(response.access_time);
+                    $('#resultCount').text(response.count);
+                    
+                    // Afficher les étudiants
+                    if (response.students.length > 0) {
+                        response.students.forEach(function(student) {
+                            let row = `
+                                <tr class="student-row">
+                                    <td>${student.id}</td>
+                                    <td>${student.name}</td>
+                                    <td>
+                                        <span class="badge ${getGradeBadge(student.grade)}">
+                                            ${student.grade}/20
+                                        </span>
+                                    </td>
+                                    <td>${formatDate(student.created_at)}</td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <button class="btn btn-sm btn-info" onclick="editStudent(${student.id})" 
+                                                    title="Modifier" data-bs-toggle="tooltip">
+                                                <i class="bi bi-pencil-square"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-danger" onclick="deleteStudent(${student.id}, '${student.name}')" 
+                                                    title="Supprimer" data-bs-toggle="tooltip">
+                                                <i class="bi bi-trash-fill"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                            $('#studentsTableBody').append(row);
+                        });
+                        
+                        // Réinitialiser les tooltips
+                        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                        tooltipTriggerList.map(function (tooltipTriggerEl) {
+                            return new bootstrap.Tooltip(tooltipTriggerEl);
+                        });
+                    } else {
+                        $('#noResults').show();
+                    }
+                }
+            })
+            .fail(function(xhr) {
+                $('#loadingIndicator').hide();
+                alert('Erreur lors du chargement des étudiants: ' + 
+                      (xhr.responseJSON ? xhr.responseJSON.error : 'Erreur inconnue'));
+            });
+    }
+    
+    // Ouvrir le modal en mode ajout
+    function openAddModal() {
+        $('#studentModalTitle').text('Ajouter un étudiant');
+        $('#studentId').val('');
+        $('#studentName').val('');
+        $('#studentGrade').val('');
+        studentModal.show();
+    }
+    
+    // Modifier un étudiant
+    function editStudent(id) {
+        // Chercher l'étudiant dans le tableau
+        let row = $(`#studentsTableBody tr:has(td:first:contains(${id}))`);
+        let name = row.find('td:eq(1)').text();
+        let gradeText = row.find('td:eq(2) .badge').text();
+        let grade = parseFloat(gradeText.split('/')[0]);
+        
+        $('#studentModalTitle').text('Modifier un étudiant');
+        $('#studentId').val(id);
+        $('#studentName').val(name);
+        $('#studentGrade').val(grade);
+        studentModal.show();
+    }
+    
+    // Sauvegarder un étudiant
+    function saveStudent() {
+        let id = $('#studentId').val();
+        let name = $('#studentName').val().trim();
+        let grade = parseFloat($('#studentGrade').val());
+        
+        if (!name || isNaN(grade)) {
+            alert('Veuillez remplir tous les champs correctement.');
+            return;
+        }
+        
+        let data = { name: name, grade: grade };
+        let url = id ? `/api/students/${id}` : '/api/students';
+        let method = id ? 'PUT' : 'POST';
+        
+        $.ajax({
+            url: url,
+            method: method,
+            contentType: 'application/json',
+            data: JSON.stringify(data)
+        })
+        .done(function(response) {
+            if (response.success) {
+                studentModal.hide();
+                loadStudents($('#searchInput').val());
+                showNotification('success', response.message);
+            }
+        })
+        .fail(function(xhr) {
+            alert('Erreur: ' + (xhr.responseJSON ? xhr.responseJSON.error : 'Erreur inconnue'));
+        });
+    }
+    
+    // Supprimer un étudiant
+    function deleteStudent(id, name) {
+        if (!confirm(`Voulez-vous vraiment supprimer ${name} ?`)) {
+            return;
+        }
+        
+        $.ajax({
+            url: `/api/students/${id}`,
+            method: 'DELETE'
+        })
+        .done(function(response) {
+            if (response.success) {
+                loadStudents($('#searchInput').val());
+                showNotification('success', response.message);
+            }
+        })
+        .fail(function(xhr) {
+            alert('Erreur: ' + (xhr.responseJSON ? xhr.responseJSON.error : 'Erreur inconnue'));
+        });
+    }
+    
+    // Vider le cache
+    function clearCache() {
+        if (!confirm('Voulez-vous vraiment vider le cache Redis ?')) {
+            return;
+        }
+        
+        $.post('/api/cache/clear')
+            .done(function(response) {
+                if (response.success) {
+                    showNotification('success', response.message);
+                    loadStudents($('#searchInput').val());
+                }
+            })
+            .fail(function(xhr) {
+                alert('Erreur: ' + (xhr.responseJSON ? xhr.responseJSON.error : 'Erreur inconnue'));
+            });
+    }
+    
+    // Fonctions utilitaires
+    function getGradeBadge(grade) {
+        if (grade >= 16) return 'bg-success';
+        if (grade >= 14) return 'bg-info';
+        if (grade >= 10) return 'bg-warning';
+        return 'bg-danger';
+    }
+    
+    function formatDate(dateString) {
+        if (!dateString) return 'N/A';
+        let date = new Date(dateString);
+        return date.toLocaleDateString('fr-FR');
+    }
+    
+    function showNotification(type, message) {
+        // Créer une notification temporaire
+        let alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+        let alert = `
+            <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+        $('.container.main-content').prepend(alert);
+        
+        // Auto-dismiss après 3 secondes
+        setTimeout(function() {
+            $('.alert').fadeOut('slow', function() { $(this).remove(); });
+        }, 3000);
+    }
+</script>
+{% endblock %}

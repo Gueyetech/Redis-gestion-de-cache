@@ -1,0 +1,47 @@
+# Ignorer les environnements virtuels Python
+venv/
+env/
+ENV/
+.venv/
+
+# Ignorer les fichiers Python compilés
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Ignorer les fichiers de distribution
+dist/
+build/
+*.egg-info/
+
+# Ignorer les fichiers d'IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignorer les fichiers de logs
+*.log
+*.md
+*.ps1
+
+# Ignorer les fichiers de base de données SQLite (si utilisés)
+*.db
+*.sqlite
+*.sqlite3
+
+# Ignorer les variables d'environnement locales (optionnel)
+# .env
+
+# Ignorer les fichiers Docker
+*.log
+
+# Ignorer les fichiers système
+.DS_Store
+Thumbs.db
+
+# Ignorer les dossiers de données persistantes
+data/
+postgres_data/

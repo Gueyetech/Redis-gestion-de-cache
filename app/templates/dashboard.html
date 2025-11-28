@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Performance{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-card {
+        text-align: center;
+        padding: 20px;
+        border-radius: 10px;
+        color: white;
+        margin-bottom: 20px;
+    }
+    
+    .stats-card h3 {
+        font-size: 2.5em;
+        margin: 10px 0;
+    }
+    
+    .stats-card p {
+        margin: 0;
+        opacity: 0.9;
+    }
+    
+    .cache-stats {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .db-stats {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+    
+    .ratio-stats {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+    
+    .chart-container {
+        position: relative;
+        height: 400px;
+        margin-bottom: 30px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-chart-line"></i> Dashboard de Performance - Cache vs Base de données
+                </h4>
+            </div>
+            <div class="card-body">
+                <button class="btn btn-primary mb-3" id="btnRefreshMetrics">
+                    <i class="fas fa-sync"></i> Actualiser les métriques
+                </button>
+                
+                <!-- Statistiques en cartes -->
+                <div class="row" id="statsCards">
+                    <div class="col-md-4">
+                        <div class="stats-card cache-stats">
+                            <i class="fas fa-bolt fa-2x"></i>
+                            <h3 id="avgCacheTime">-</h3>
+                            <p>Temps moyen Cache (ms)</p>
+                            <small id="cacheCount">0 requêtes</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="stats-card db-stats">
+                            <i class="fas fa-database fa-2x"></i>
+                            <h3 id="avgDbTime">-</h3>
+                            <p>Temps moyen BDD (ms)</p>
+                            <small id="dbCount">0 requêtes</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="stats-card ratio-stats">
+                            <i class="fas fa-tachometer-alt fa-2x"></i>
+                            <h3 id="speedupRatio">-</h3>
+                            <p>Accélération Cache</p>
+                            <small>fois plus rapide</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Graphique de comparaison -->
+                <div class="card mt-4">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="fas fa-chart-bar"></i> Comparaison des temps d'accès
+                        </h5>
+                        <div class="chart-container">
+                            <canvas id="performanceChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Graphique d'évolution -->
+                <div class="card mt-4">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="fas fa-chart-line"></i> Évolution des temps d'accès (20 dernières requêtes)
+                        </h5>
+                        <div class="chart-container">
+                            <canvas id="evolutionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Statistiques Redis -->
+                <div class="card mt-4">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="fas fa-info-circle"></i> Statistiques Redis
+                        </h5>
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <h6>Connexions</h6>
+                                    <p class="mb-0 h4" id="redisConnections">-</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <h6>Commandes</h6>
+                                    <p class="mb-0 h4" id="redisCommands">-</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <h6>Hits</h6>
+                                    <p class="mb-0 h4" id="redisHits">-</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <h6>Mémoire</h6>
+                                    <p class="mb-0 h4" id="redisMemory">-</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+
+<script>
+    let performanceChart;
+    let evolutionChart;
+    
+    $(document).ready(function() {
+        loadMetrics();
+        
+        $('#btnRefreshMetrics').click(function() {
+            loadMetrics();
+        });
+        
+        // Auto-refresh toutes les 10 secondes
+        setInterval(loadMetrics, 10000);
+    });
+    
+    function loadMetrics() {
+        $.get('/api/performance-metrics')
+            .done(function(response) {
+                if (response.success) {
+                    updateStats(response.metrics);
+                    updateCharts(response.metrics);
+                    updateRedisStats(response.cache_stats);
+                }
+            })
+            .fail(function(xhr) {
+                console.error('Erreur lors du chargement des métriques:', xhr);
+            });
+    }
+    
+    function updateStats(metrics) {
+        // Temps moyens
+        $('#avgCacheTime').text(metrics.cache.average || '-');
+        $('#avgDbTime').text(metrics.database.average || '-');
+        $('#cacheCount').text(metrics.cache.count + ' requêtes');
+        $('#dbCount').text(metrics.database.count + ' requêtes');
+        
+        // Ratio d'accélération
+        if (metrics.cache.average > 0 && metrics.database.average > 0) {
+            let ratio = (metrics.database.average / metrics.cache.average).toFixed(1);
+            $('#speedupRatio').text(ratio + 'x');
+        } else {
+            $('#speedupRatio').text('-');
+        }
+    }
+    
+    function updateCharts(metrics) {
+        // Graphique de comparaison (barres)
+        let ctxBar = document.getElementById('performanceChart').getContext('2d');
+        
+        if (performanceChart) {
+            performanceChart.destroy();
+        }
+        
+        performanceChart = new Chart(ctxBar, {
+            type: 'bar',
+            data: {
+                labels: ['Cache Redis', 'Base de données PostgreSQL'],
+                datasets: [{
+                    label: 'Temps d\'accès moyen (ms)',
+                    data: [metrics.cache.average, metrics.database.average],
+                    backgroundColor: [
+                        'rgba(40, 167, 69, 0.7)',
+                        'rgba(0, 123, 255, 0.7)'
+                    ],
+                    borderColor: [
+                        'rgba(40, 167, 69, 1)',
+                        'rgba(0, 123, 255, 1)'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    title: {
+                        display: true,
+                        text: 'Comparaison des performances'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Temps (ms)'
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Graphique d'évolution (lignes)
+        let ctxLine = document.getElementById('evolutionChart').getContext('2d');
+        
+        if (evolutionChart) {
+            evolutionChart.destroy();
+        }
+        
+        let labels = Array.from({length: metrics.cache.times.length}, (_, i) => i + 1);
+        
+        evolutionChart = new Chart(ctxLine, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Cache Redis',
+                        data: metrics.cache.times,
+                        borderColor: 'rgba(40, 167, 69, 1)',
+                        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: 'Base de données',
+                        data: metrics.database.times,
+                        borderColor: 'rgba(0, 123, 255, 1)',
+                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Évolution temporelle des performances'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Temps (ms)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Requête n°'
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    function updateRedisStats(stats) {
+        $('#redisConnections').text(stats.total_connections || '-');
+        $('#redisCommands').text(stats.total_commands || '-');
+        $('#redisHits').text(stats.keyspace_hits || '-');
+        $('#redisMemory').text(stats.used_memory_human || '-');
+    }
+</script>
+{% endblock %}

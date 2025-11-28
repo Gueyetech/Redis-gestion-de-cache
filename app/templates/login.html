@@ -1,0 +1,74 @@
+{% extends "base.html" %} {% block title %}Connexion - Gestion des Notes{%
+endblock %} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5">
+    <div class="card">
+      <div class="card-header text-center">
+        <h4 class="mb-0">Connexion</h4>
+      </div>
+      <div class="card-body p-4">
+        <form method="POST" action="{{ url_for('auth.login') }}">
+          <div class="mb-3">
+            <label for="username" class="form-label">
+              <i class="bi bi-person-fill"></i> Nom d'utilisateur
+            </label>
+            <input
+              type="text"
+              class="form-control"
+              id="username"
+              name="username"
+              placeholder="Entrez votre nom d'utilisateur"
+              required
+              autofocus
+            />
+          </div>
+
+          <div class="mb-3">
+            <label for="password" class="form-label">
+              <i class="bi bi-lock-fill"></i> Mot de passe
+            </label>
+            <input
+              type="password"
+              class="form-control"
+              id="password"
+              name="password"
+              placeholder="Entrez votre mot de passe"
+              required
+            />
+          </div>
+
+          <div class="mb-3 form-check">
+            <input
+              type="checkbox"
+              class="form-check-input"
+              id="remember"
+              name="remember"
+            />
+            <label class="form-check-label" for="remember">
+              Se souvenir de moi
+            </label>
+          </div>
+
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary btn-lg">
+              <i class="bi bi-box-arrow-in-right"></i> Se connecter
+            </button>
+          </div>
+        </form>
+
+        <hr class="my-4" />
+
+        <div class="text-center">
+          <p class="text-muted mb-2">Pas encore de compte ?</p>
+          <a
+            href="{{ url_for('auth.register') }}"
+            class="btn btn-outline-secondary"
+          >
+            <i class="bi bi-person-plus-fill"></i> Créer un compte
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
