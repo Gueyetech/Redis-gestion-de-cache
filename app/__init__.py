@@ -33,6 +33,7 @@ def create_app():
     app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 heure
     
     # Initialiser Redis pour le cache
+    
     redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
     global redis_client
     redis_client = redis.from_url(redis_url, decode_responses=True)
